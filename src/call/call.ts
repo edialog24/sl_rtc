@@ -339,7 +339,7 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
         window.clearTimeout(connectionTimeout);
     };
 
-    let hangup = function() {
+    let hangup = function(cb?: (err?: object) => void) {
         shutdown();
         logger.debug('Hangup');
         handlers.notify('ending');
@@ -349,14 +349,18 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
             //but don't wait forever
             window.setTimeout(function() {
                 renegotiateInProgress = false;
-                hangup();
+                hangup(cb);
             }, 1000);
         } else {
             endReason = CallEndReason.USER_BYE;
             try {
                 userAgent.stop();
+                if(cb)
+                    cb();
             } catch (ex) {
                 logger.warn('Exception stopping user agent after user hangup ', ex);
+                if(cb)
+                cb(ex);
             }
         }
     };
