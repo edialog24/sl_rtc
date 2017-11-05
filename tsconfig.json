@@ -10,7 +10,8 @@
         "noImplicitAny": true,
         "strictNullChecks": true,
         "noImplicitThis": true,
-        "alwaysStrict": true
+        "alwaysStrict": true,
+        "noEmitHelpers": true
     },
     "include": ["src/**/*.ts"],
     "exclude": ["node_modules"]
