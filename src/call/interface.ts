@@ -20,7 +20,9 @@ export function createCall(
     return new Promise<SlCall>((resolve, reject) => {
         let api_url =
             'https://' + api_host + '/v1/webrtc/org_domain' +
-            '?version=latest&target=' +
+            '?version=latest'+
+            '&q='+new Date().getTime() +
+            +'&target=' +
             encodeURIComponent(target);
         fetch(api_url, {
             method: 'GET'
