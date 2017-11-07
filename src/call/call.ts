@@ -167,8 +167,8 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
 
     let dial = function(local_stream: MediaStream) {
         if (!local_stream) throw 'Local media stream is a required parameter';
-        if (local_stream.getAudioTracks().length !== 1)
-            throw 'Local stream must have exactly 1 audio track';
+       /* if (local_stream.getAudioTracks().length !== 1)
+            throw 'Local stream must have exactly 1 audio track';*/
         if (local_stream.getVideoTracks().length > 1)
             throw 'Local stream must have 0 or 1 video tracks';
         if (local_stream.getVideoTracks().length === 1) {
