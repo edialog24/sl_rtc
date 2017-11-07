@@ -22,7 +22,7 @@ export function createCall(
             'https://' + api_host + '/v1/webrtc/org_domain' +
             '?version=latest'+
             '&q='+new Date().getTime() +
-            +'&target=' +
+            '&target=' +
             encodeURIComponent(target);
         fetch(api_url, {
             method: 'GET'
