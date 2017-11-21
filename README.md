@@ -12,6 +12,8 @@ An [Example web page](https://starleafapis.github.io/sl_rtc/examples/web/index) 
 ## Installation
 `npm install sl_rtc`
 
+Requires node >= v8.1.4, npm >= 5.0.3
+
 ## API
 
 See the [web example](https://starleafapis.github.io/sl_rtc/examples/web/index) for a simple website using this library.
