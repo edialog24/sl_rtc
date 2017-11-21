@@ -17,6 +17,7 @@
     "license": "MIT",
     "dependencies": {
         "jssip-sl": "git+https://github.com/edialog24/jssip-sl.git",
+        "mobile-detect": "^1.3.7",
         "sdp-interop-sl": "^1.4.3",
         "sprintf-js": "^1.1.1",
         "webrtc-adapter": "^5.0.4"

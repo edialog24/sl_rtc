@@ -7,7 +7,8 @@ import { ILogger, detectedBrowser } from '../sl';
 import { PCState, MediaType } from './interface';
 import * as sl from '../sl';
 import { sprintf } from 'sprintf-js';
-
+import * as MobileDetect from 'mobile-detect';
+const mobileDetect = new MobileDetect(window.navigator.userAgent);
 export type Orginator = 'remote' | 'local';
 export type SdpType = 'offer' | 'answer' | null;
 
@@ -670,11 +671,15 @@ export function SdpMunger(
     let onIceComplete = function(pc: RTCPeerConnection, audioOnly: boolean, callback: any) {
         let onChromeStats = function(report: any) {
             logger.debug('Parsing stats for ice re-invite info');
-            if (parseChromiumStats(report)) {
-                callback();
+            if(mobileDetect.os() !== 'iOS') {
+                if (parseChromiumStats(report)) {
+                    callback();
+                } else {
+                    logger.debug('Stats not present yet, setting timer');
+                    setStatsTimer(pc, audioOnly, callback);
+                }
             } else {
-                logger.debug('Stats not present yet, setting timer');
-                setStatsTimer(pc, audioOnly, callback);
+                callback();
             }
         };
         if (browser_name !== 'firefox') {
