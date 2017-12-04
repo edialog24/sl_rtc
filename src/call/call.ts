@@ -458,7 +458,7 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
     };
 
     let addPCStream = function(stream: MediaStream) {
-        if (stream.getAudioTracks().length !== 0) throw 'PC stream must have no audio track';
+        //if (stream.getAudioTracks().length !== 0) throw 'PC stream must have no audio track';
         if (stream.getVideoTracks().length > 1) throw 'PC stream must have 0 or 1 video tracks';
         if (stream.getVideoTracks().length === 1) {
             let track = stream.getVideoTracks()[0];
