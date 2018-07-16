@@ -22,7 +22,6 @@ type IceCandidates = { [k in Orginator]: any };
 export function SdpMunger(
     base_logger: ILogger,
     logSdp: boolean,
-    plugin: boolean,
     allowH264: boolean
 ) {
     let min_video_bps = 200 * 1000;
@@ -52,9 +51,6 @@ export function SdpMunger(
     // mline protocol must always match the offer.
     let localOfferProtocols: string[] = [];
     let remoteOfferProtocols: string[] = [];
-
-    // plugin may remap this after initially specifying it. We will reverse this.
-    let video_abs_send_ext_number: number | null = null;
 
     let tcpMedia = false;
     // we will parse this from the peer connection stats, and add them to the SDP.
@@ -270,12 +266,6 @@ export function SdpMunger(
         }
         let num_mlines = session.media.length;
         session.media.forEach(function(mline: any, index: number, media: any) {
-            if (mline.type === 'audio') {
-                if (plugin) {
-                    // Use separate msids when talking to the plugin to prevent a crash on renegotiation.
-                    mline.msid = 'sl-audio-stream sl-audio';
-                }
-            }
             if (data.type === 'offer') {
                 remoteOfferProtocols.push(mline.protocol);
                 if (localOfferProtocols.length > index) {
@@ -357,33 +347,6 @@ export function SdpMunger(
                 });
             }
             if (mline.type === 'video') {
-                if (plugin && mline.ext) {
-                    for (let ext_index = 0; ext_index < mline.ext.length; ext_index++) {
-                        let rtp_ext = mline.ext[ext_index];
-                        if (
-                            rtp_ext.uri ===
-                            'http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time'
-                        ) {
-                            if (!video_abs_send_ext_number) {
-                                video_abs_send_ext_number = rtp_ext.value;
-                            } else {
-                                if (rtp_ext.value != video_abs_send_ext_number) {
-                                    logger.warn(
-                                        sprintf(
-                                            'absolute send time extension number changed ' +
-                                                'from %d to %d, hacking back to %d',
-                                            video_abs_send_ext_number,
-                                            rtp_ext.value,
-                                            video_abs_send_ext_number
-                                        )
-                                    );
-                                }
-                                rtp_ext.value = video_abs_send_ext_number;
-                            }
-                            break;
-                        }
-                    }
-                }
                 if (allowH264) {
                     hackH264Params(mline);
                 } else {
@@ -519,25 +482,6 @@ export function SdpMunger(
         return state;
     };
 
-    let restartPC = function(
-        data: SdpData,
-        peer_con: RTCPeerConnection,
-        callback: any,
-        error: any
-    ) {
-        logger.debug('Faking restart of PC stream');
-        let tempData: any = {
-            originator: data.originator,
-            type: data.type,
-            sdp: deepCopy(data.sdp)
-        };
-        let session = parseSdp(tempData.sdp);
-        session.media[2].port = 0;
-        tempData.sdp = writeSdp(session);
-        mungeRemote(tempData);
-        peer_con.setRemoteDescription(tempData as RTCSessionDescription, callback, error);
-    };
-
     function processW3C(report: any) {
         // https://w3c.github.io/webrtc-stats/#transportstats-dict*
         logger.debug('attempting to process W3C stats');
@@ -611,7 +555,7 @@ export function SdpMunger(
                 return true;
             }
         } catch (ex) {
-            logger.warn('non W3C stats, try old chrome and old plugin stat parsing');
+            logger.warn('non W3C stats, try old chrome stat parsing');
         }
         let getter: any;
         if (typeof report.forEach !== 'undefined') {
@@ -668,6 +612,9 @@ export function SdpMunger(
     };
 
     // the callback is necessary as pc.getStats is not blocking.
+    // TODO(rdt): remove this logic when entire cloud is > capi 888.
+    // Post CAPI 888, the cloud sends the ICE re-invite and fixes up the candidates in the SDP
+    // rendering this work unnecessary.
     let onIceComplete = function(pc: RTCPeerConnection, audioOnly: boolean, callback: any) {
         let onChromeStats = function(report: any) {
             logger.debug('Parsing stats for ice re-invite info');
@@ -722,7 +669,6 @@ export function SdpMunger(
         mungeLocal: mungeLocal,
         isAudioOnly: isAudioOnly,
         getPcState: getPcState,
-        restartPC: restartPC,
         onIceComplete: onIceComplete,
         setLocalMedia: setLocalMedia,
         stop: stop

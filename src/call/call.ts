@@ -21,18 +21,19 @@ type CallEventHandlers = {
 export type CallConfig = {
     target: string;
     org_domain: string;
+    capi_version: number;
     display_name: string;
 };
+
+const cc_sends_ice_reinvite_min_version = 988;
 
 export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean): SlCall {
     let config = {
         ...config_,
-        plugin: false,
         allowH264: sl.detectedBrowser === 'safari',
         websocket_port: 443
     };
     let logger = base_logger.sub('CALL');
-    let plugin = config.plugin;
     let statsManager = StatsManager(statsPeriod, logger);
     let endReason: CallEndReason | null = null;
 
@@ -80,11 +81,16 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
     let rtcSession: JsSIP.RtcSession;
     let callEnding = true;
 
-    let renegotiate = true;
-    let renegotiateInProgress = false;
+    let await_ice_reinvite = config.capi_version >= cc_sends_ice_reinvite_min_version;
+    logger.info('Await remote ice re-invite = ', await_ice_reinvite);
+    let renegotiation_state = {
+        complete: false,
+        in_progress: false
+    };
+
     let connectionTimeout: number = -1; // If we don't connect a websocket within 10 seconds, fail the call
 
-    let sdpMunger = SdpMunger(logger, logSdp, plugin, config.allowH264);
+    let sdpMunger = SdpMunger(logger, logSdp, config.allowH264);
     let audioOnlyCall = false;
     let connected_ws = false;
 
@@ -105,29 +111,9 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
             handlers.notify('pc_state', sdpMunger.getPcState(data));
         } else {
             let pcstate = sdpMunger.getPcState(data);
-            if (pcstate === PCState.RECV && data.type === 'offer' && plugin) {
-                // let JsSIP know to await for our callback. await returns a function we call when we're done.
-                let finished = data.await();
-                sdpMunger.restartPC(
-                    data,
-                    rtcSession.connection,
-                    function() {
-                        logger.debug('Sucessfully restarted PC stream');
-                        statsManager.processSdp(data);
-                        sdpMunger.mungeRemote(data);
-                        finished();
-                        handlers.notify('pc_state', pcstate);
-                    },
-                    function() {
-                        logger.error('Failed to restart PC stream');
-                    }
-                );
-                return;
-            } else {
-                statsManager.processSdp(data);
-                sdpMunger.mungeRemote(data);
-                handlers.notify('pc_state', pcstate);
-            }
+            statsManager.processSdp(data);
+            sdpMunger.mungeRemote(data);
+            handlers.notify('pc_state', pcstate);
         }
     };
 
@@ -146,10 +132,11 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
         if (
             ice.gatheringState === 'complete' &&
             ice.connectionState === finalConnState &&
-            renegotiate &&
-            !renegotiateInProgress
+            !renegotiation_state.complete &&
+            !renegotiation_state.in_progress &&
+            !await_ice_reinvite
         ) {
-            renegotiateInProgress = true;
+            renegotiation_state.in_progress = true;
             sdpMunger.onIceComplete(rtcSession.connection, audioOnlyCall, function() {
                 let mutestatus = rtcSession.isMuted();
                 rtcSession.renegotiate({}, function() {
@@ -189,7 +176,8 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
             ],
             display_name: config.display_name,
             register: false,
-            session_timers: false
+            session_timers: false,
+            user_agent: 'WebRTC ' + sl.detectedBrowser.toLowerCase() + ' ' + sl.detectedVersion
         };
         endReason = null;
         callEnding = false;
@@ -207,10 +195,6 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
             rtcSession = e.session as JsSIP.RtcSession;
             muteStatus = rtcSession.isMuted();
             logger.info('Initial mute status = ', muteStatus);
-            // rtcSession.on('sending', function(event) {
-            //     let sip_call_id = config.call_number + '@' + config.suid;
-            //     event.request.setHeader('call-id', sip_call_id);
-            // });
             rtcSession.on('ended', function(event) {
                 logger.debug('RtcSession ended');
                 onCallError(event);
@@ -251,6 +235,9 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
                 event.callback = function() {
                     logger.info('Reinvite finished');
                     mute(muteStatus);
+                    if (await_ice_reinvite && !renegotiation_state.complete) {
+                        finishedRenegotiation();
+                    }
                 };
             });
         });
@@ -290,8 +277,8 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
 
     let finishedRenegotiation = function() {
         logger.debug('Finished renegotiation');
-        renegotiateInProgress = false;
-        renegotiate = false;
+        renegotiation_state.in_progress = false;
+        renegotiation_state.complete = true;
         handlers.notify('renegotiated');
     };
 
@@ -343,12 +330,12 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
         shutdown();
         logger.debug('Hangup');
         handlers.notify('ending');
-        if (renegotiateInProgress) {
+        if (renegotiation_state.in_progress) {
             //if we've started the reinvite process, give it some time to complete.
             //it is invalid to send a bye whilst awaiting a response
             //but don't wait forever
             window.setTimeout(function() {
-                renegotiateInProgress = false;
+                renegotiation_state.in_progress = false;
                 hangup(cb);
             }, 1000);
         } else {
@@ -405,6 +392,8 @@ export function Call(config_: CallConfig, base_logger: ILogger, logSdp: boolean)
                 endReason = CallEndReason.CONNECTION_REFUSED;
             }
         }
+        renegotiation_state.complete = false;
+        renegotiation_state.in_progress = false;
         handlers.notify('ended', endReason);
     };
 
