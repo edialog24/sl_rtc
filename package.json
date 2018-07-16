@@ -17,6 +17,7 @@
     "license": "MIT",
     "dependencies": {
         "jssip-sl": "^3.2.12",
+        "mobile-detect": "^1.4.2",
         "sdp-interop-sl": "^1.4.3",
         "sprintf-js": "^1.1.1",
         "webrtc-adapter": "^6.1.5"
